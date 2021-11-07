@@ -1,0 +1,81 @@
+name: btrbk-ivo
+base: core20
+adopt-info: btrbk
+summary: Btrbk is a backup tool for btrfs subvolumes.
+description: |
+  Btrbk is a backup tool for btrfs subvolumes, taking advantage of btrfs specific capabilities to create atomic snapshots and transfer them incrementally to your backup locations.
+
+  The source and target locations are specified in a config file, which allows to easily configure simple scenarios like "laptop with locally attached backup disks", as well as more complex ones, e.g. "server receiving backups from several hosts via ssh, with different retention policy".
+
+  Key Features:
+
+    - Atomic snapshots
+    - Incremental backups
+    - Flexible retention policy
+    - Backups to multiple destinations
+    - Transfer via ssh
+    - Resume backups (for removable and mobile devices)
+    - Archive to offline storage
+    - Encrypted backups to non-btrfs storage
+    - Wildcard subvolumes (useful for docker and lxc containers)
+    - Transaction log
+    - Comprehensive list and statistics output
+    - Resolve and trace btrfs parent-child and received-from relationships
+    - List file changes between backups
+    - Calculate accurate disk space usage based on block regions
+
+  Btrbk is designed to run as a cron job for triggering periodic snapshots and backups, as well as from the command line (e.g. for instantly creating additional snapshots).
+
+grade: stable
+confinement: classic
+compression: lzo
+architectures:
+    - build-on: [ amd64 ]
+    - build-on: [ arm64 ]
+
+apps:
+  btrbk:
+    command: usr/bin/btrbk
+    completer: usr/share/bash-completion/completions/completion.bash
+    environment:
+      PATH: $SNAP/bin:$SNAP/usr/bin:$PATH
+      LD_LIBRARY_PATH: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET
+      PERL5LIB: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/perl:$SNAP/usr/share/perl
+  lsbtr:
+    command: usr/bin/lsbtr
+    completer: usr/share/bash-completion/completions/completion.bash
+    environment:
+      PATH: $SNAP/bin:$SNAP/usr/bin:$PATH
+      LD_LIBRARY_PATH: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET
+      PERL5LIB: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/perl:$SNAP/usr/share/perl
+
+parts:
+  btrbk:
+    plugin: make
+    source: https://github.com/digint/btrbk.git
+    source-tag: v0.31.3
+    stage-packages:
+      - perl
+      - perl-base
+    build-packages:
+      - asciidoctor
+    organize:
+      usr/lib/systemd/system/btrbk.service: usr/share/btrbk/systemd/btrbk.service
+      usr/lib/systemd/system/btrbk.timer: usr/share/btrbk/systemd/btrbk.timer
+    override-build: |
+      _version="$(git describe --tags | cut -d_ -f2)"
+      snapcraftctl set-version "${_version}+snap1"
+      snapcraftctl build
+
+      # Adjust shebang for Snap classic confinement
+      sed -i '1 s|#!.*$|#!/usr/bin/env perl|' "${SNAPCRAFT_PART_INSTALL}/usr/bin/btrbk"
+
+      # Copy bash completer to install directory
+      _compl_dir="${SNAPCRAFT_PART_INSTALL}/usr/share/bash-completion/completions"
+      mkdir -p "$_compl_dir"
+      cp "${SNAPCRAFT_PART_SRC}/contrib/bash/completion.bash" "$_compl_dir"
+    override-prime: |
+      snapcraftctl prime
+      sed -i 's|=.*/\(btrbk[[:blank:]]\+run\)|=/snap/bin/\1|' "${SNAPCRAFT_PRIME}/usr/share/btrbk/systemd/btrbk.service"
+      find "${SNAPCRAFT_PRIME}/usr/share/man" ! -type d ! -name "*btrbk*" -exec rm "{}" ";"
+
